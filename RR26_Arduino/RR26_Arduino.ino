@@ -8,6 +8,16 @@
 #include <Arduino.h>                // make sure this is first
 #include "RedRobot.h"
 
+// PID tuning parameters
+float Kp = 5.0f;
+float Kd = 2.0f;
+
+// Store error between iterations
+float previous_error = 0.0f;
+
+// Base motor speed
+float current_speed = 30.0f;
+
 // Declare some global variables
 bool started; // boolean (true or false) to keep track of if we should start
 int counter;  // integer to hold a count value
@@ -30,53 +40,72 @@ void setup() {
 // As an example, this code moves out of the starting box at start, and 
 // Look at RedRobot.h to see the robot interface: what functions you can call and how.
 
-float current_speed = 30;
-
 void AutonomousLoop() {
-    // move forward - set motors 2 and 3 to speed 30
-    RedRobot::WriteDCMotor(2, current_speed);
-    RedRobot::WriteDCMotor(3, current_speed);
 
     uint16_t sensor_values[6];
-    RedRobot:ReadLineSensor(sensor_values);
 
-    /*     PID stuff     */
-    // STEP 1: Calculate weighted average position
+    // FIX: Double colon
+    RedRobot::ReadLineSensor(sensor_values);
+
+    /* STEP 1: Calculate weighted average position */
+
     float weighted_sum = 0.0f;
     float total_darkness = 0.0f;
 
     for (int i = 0; i < 6; i++) {
-        // give more importance 
+
+        // Assumes 0 = black, 1000 = white
         float darkness = 1000.0f - sensor_values[i];
 
-        // Sensor positions: -2.5, -1.5, -0.5,
-        //                    +0.5, +1.5, +2.5
+        // Keep darkness nonnegative
+        darkness = std::max(0.0f, darkness);
+
+        // Sensor positions: -2.5 to +2.5 (ideally center is between 3 and 4 which corresponds to indexes 2 and 3)
         float position = i - 2.5f;
 
         weighted_sum += darkness * position;
         total_darkness += darkness;
     }
 
+    /* STEP 2: Calculate error */
+
+    // Stop if the line is not detected (error case which should never happen)
+    if (total_darkness <= 0.0f) {
+        RedRobot::WriteDCMotor(2, 0);
+        RedRobot::WriteDCMotor(3, 0);
+        return;
+    }
+
+    float error = weighted_sum / total_darkness;
+
+    /* STEP 3: Calculate PD correction */
+
     float P = Kp * error;
     float D = Kd * (error - previous_error);
 
     float correction = P + D;
-    /* PID calculations ended */
+
+    // IMPORTANT: Save error for next iteration
+    previous_error = error;
+
+    /* STEP 4: Adjust motor speeds */
 
     float left_speed = current_speed + correction;
     float right_speed = current_speed - correction;
 
-    // Keep motor speeds in valid range
-    left_speed  = std::clamp(left_speed, 0.0f, 255.0f);
+    // IMPORTANT: Check actual RedRobot motor speed limits
+    left_speed = std::clamp(left_speed, 0.0f, 255.0f);
     right_speed = std::clamp(right_speed, 0.0f, 255.0f);
 
-    // set all servos to angle 0
+    /* STEP 5: Set servos */
+
     RedRobot::SetServo(0, 0);
     RedRobot::SetServo(1, 0);
     RedRobot::SetServo(2, 0);
     RedRobot::SetServo(3, 0);
 
-    // move forward at adjustment speed
+    /* STEP 6: Move motors */
+
     RedRobot::WriteDCMotor(2, left_speed);
     RedRobot::WriteDCMotor(3, right_speed);
 }
