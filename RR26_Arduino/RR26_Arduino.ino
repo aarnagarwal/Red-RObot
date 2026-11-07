@@ -29,41 +29,46 @@ void setup() {
 // This function runs over and over (in a loop) when you are in autonomous mode.
 // As an example, this code moves out of the starting box at start, and 
 // Look at RedRobot.h to see the robot interface: what functions you can call and how.
+
+float current_speed = 30;
+
 void AutonomousLoop() {
-
-    /*
-    if (!started) { // e.g. get out of the starting box
-        started = true;
-
-        // move forward - set motors 2 and 3 to speed 30
-        RedRobot::WriteDCMotor(2, 30);
-        RedRobot::WriteDCMotor(3, 30);
-
-        // wait 1000 milliseconds = 1 second
-        delay(1000);
-
-        // turn right - set motor 2 to speed 30 and motor 3 to -30
-        RedRobot::WriteDCMotor(2, 30);
-        RedRobot::WriteDCMotor(3, -30);
-
-        delay(500); // half a second
-
-        // stop the motors
-        RedRobot::WriteDCMotor(2, 0);
-        RedRobot::WriteDCMotor(3, 0);
-    }
-    */
+    // move forward - set motors 2 and 3 to speed 30
+    RedRobot::WriteDCMotor(2, current_speed);
+    RedRobot::WriteDCMotor(3, current_speed);
 
     uint16_t sensor_values[6];
     RedRobot:ReadLineSensor(sensor_values);
 
-    //darkest ;ow vslie
+    /*     PID stuff     */
+    // STEP 1: Calculate weighted average position
+    float weighted_sum = 0.0f;
+    float total_darkness = 0.0f;
 
-    
-    
-    // repeatedly move the servo and get in scoring position
-    // remember that the below code will run repeatedly since we are in
-    // the AutonomousLoop!
+    for (int i = 0; i < 6; i++) {
+        // give more importance 
+        float darkness = 1000.0f - sensor_values[i];
+
+        // Sensor positions: -2.5, -1.5, -0.5,
+        //                    +0.5, +1.5, +2.5
+        float position = i - 2.5f;
+
+        weighted_sum += darkness * position;
+        total_darkness += darkness;
+    }
+
+    float P = Kp * error;
+    float D = Kd * (error - previous_error);
+
+    float correction = P + D;
+    /* PID calculations ended */
+
+    float left_speed = current_speed + correction;
+    float right_speed = current_speed - correction;
+
+    // Keep motor speeds in valid range
+    left_speed  = std::clamp(left_speed, 0.0f, 255.0f);
+    right_speed = std::clamp(right_speed, 0.0f, 255.0f);
 
     // set all servos to angle 0
     RedRobot::SetServo(0, 0);
@@ -71,35 +76,7 @@ void AutonomousLoop() {
     RedRobot::SetServo(2, 0);
     RedRobot::SetServo(3, 0);
 
-    // move forward at speed 50
-    RedRobot::WriteDCMotor(2, 50);
-    RedRobot::WriteDCMotor(3, 50);
-
-    delay(1000);
-
-    // stop the motors
-    RedRobot::WriteDCMotor(2, 0);
-    RedRobot::WriteDCMotor(3, 0);
-
-    // set the motors to different angles
-    RedRobot::SetServo(0, 90);
-    RedRobot::SetServo(1, 180);
-    RedRobot::SetServo(2, 90);
-    RedRobot::SetServo(3, 180);
-
-    delay(500);
-
-    // move backward
-    RedRobot::WriteDCMotor(2, -50);
-    RedRobot::WriteDCMotor(3, -50);
-
-    delay(1000);
-    
-    // Print to the serial console to debug!
-    Serial.print("[AUTO] Running ");
-    Serial.print(counter);
-    Serial.println();
-
-    // increment the counter
-    counter = counter + 1;
+    // move forward at adjustment speed
+    RedRobot::WriteDCMotor(2, left_speed);
+    RedRobot::WriteDCMotor(3, right_speed);
 }
