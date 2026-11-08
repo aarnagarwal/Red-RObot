@@ -8,6 +8,13 @@
 #include <Arduino.h>                // make sure this is first
 #include "RedRobot.h"
 
+
+
+struct{
+    float previous_error;
+    float correction;
+} PID_struct;
+
 // PID tuning parameters
 float Kp = 5.0f;
 float Kd = 2.0f;
@@ -21,6 +28,9 @@ float current_speed = 30.0f;
 // Declare some global variables
 bool started; // boolean (true or false) to keep track of if we should start
 int counter;  // integer to hold a count value
+
+PID_struct PID_info = malloc(PID_struct);
+PID_info->previous_error = previous_error;
 
 // This function runs ONCE, when the microcontroller boots up
 void setup() {
@@ -36,17 +46,7 @@ void setup() {
   counter = 0;
 }
 
-// This function runs over and over (in a loop) when you are in autonomous mode.
-// As an example, this code moves out of the starting box at start, and 
-// Look at RedRobot.h to see the robot interface: what functions you can call and how.
-
-void AutonomousLoop() {
-
-    uint16_t sensor_values[6];
-
-    // FIX: Double colon
-    RedRobot::ReadLineSensor(sensor_values);
-
+void PID_calc(uint16_t array_of_sensor_vals, struct PID_struct *PID_info) {
     /* STEP 1: Calculate weighted average position */
 
     float weighted_sum = 0.0f;
@@ -55,7 +55,7 @@ void AutonomousLoop() {
     for (int i = 0; i < 6; i++) {
 
         // Assumes 0 = black, 1000 = white
-        float darkness = 1000.0f - sensor_values[i];
+        float darkness = 1000.0f - array_of_sensor_vals[i];
 
         // Keep darkness nonnegative
         darkness = std::max(0.0f, darkness);
@@ -81,17 +81,27 @@ void AutonomousLoop() {
     /* STEP 3: Calculate PD correction */
 
     float P = Kp * error;
-    float D = Kd * (error - previous_error);
+    float D = Kd * (error - PID_info->previous_error);
 
     float correction = P + D;
 
     // IMPORTANT: Save error for next iteration
     previous_error = error;
 
+    PID_info->correction = correction;
+    PID_info->previous_error = previous_error;
+}
+
+void line_follow() {
+    uint16_t sensor_values[6];
+    RedRobot::ReadLineSensor(sensor_values);
+
+    PID_calc(&sensor_values, &PID_info);
+
     /* STEP 4: Adjust motor speeds */
 
-    float left_speed = current_speed + correction;
-    float right_speed = current_speed - correction;
+    float left_speed = current_speed + PID_info->correction;
+    float right_speed = current_speed - PID_info->correction;
 
     // IMPORTANT: Check actual RedRobot motor speed limits
     left_speed = std::clamp(left_speed, -100.0f, 100.0f);
@@ -109,3 +119,76 @@ void AutonomousLoop() {
     RedRobot::WriteDCMotor(2, left_speed);
     RedRobot::WriteDCMotor(3, right_speed);
 }
+
+// This function runs over and over (in a loop) when you are in autonomous mode.
+// As an example, this code moves out of the starting box at start, and 
+// Look at RedRobot.h to see the robot interface: what functions you can call and how.
+
+void AutonomousLoop() {
+    unsigned long initialTimems = 0;
+    
+    //auton_state is if we are in scoring or 
+    if (auton_state == 1) {
+        auton_button();
+    } else {
+        auton_score();
+    }
+}
+//direction_state is L/R maybe u set globals idk thats aarna's function here
+
+/*
+AUTON OPTIONS
+GOAL: BUTTON
+start (L/R)
+line follow
+run into wall 
+done (enter teleop)
+
+GOAL: SCORE
+start (L/R)
+line follow (forward really)
+lined up
+dispense
+done (enter teleop)
+*/
+
+// GOAL: BUTTON //
+//left and right are the same bc no components are moving
+/* PUT THE FOLLOWING IN THE LOOP BEFORE CALLING THIS FUNCTION
+unsigned long initialTimems = 0; 
+*/
+void auton_button() {
+    //line follow
+    unsigned long currentTimems = millis(); //in ms
+
+    //change the first val to the amount of seconds, 100 makes in ms
+    while ((initialTimems - currentTimems) < (10*100)) {
+        lineFollow();
+    }
+
+    //hit the wall
+    //stop moving forward after an amount of time but that will be determined after we can do some testing
+}
+
+// GOAL: SCORE //
+//left and right are the same bc no components are moving
+/* PUT THE FOLLOWING IN THE LOOP BEFORE CALLING THIS FUNCTION
+unsigned long initialTimems = 0; 
+*/
+void auton_score() {
+    //line follow
+    unsigned long currentTimems = millis(); //in ms
+
+    //change the first val to the amount of seconds, 100 makes in ms
+    //this one the amount of time does matter, how long until we're at the zone so lets spit it out
+    while ((initialTimems - currentTimems) < (10*100)) {
+        lineFollow();
+    }
+    //lined up? wait it will be lol
+
+    //dispense
+    //aka reverse direction of the intake wheel
+    //RedRobot::write to that yellow motor to go the negative (out) direction
+    RedRobot::WriteDCMotor(0, -100); //CHECK THIS IDK HOW TO DO THE YELLOW ONE
+}
+

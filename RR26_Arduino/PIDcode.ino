@@ -1,3 +1,4 @@
+/*
 struct {
     float base_speed;
     float gain;
@@ -16,6 +17,7 @@ also want to calculate the stuff helpers? such as error*gain stuff?
 could also have a helper for calculating what to fix the err field or smth to
 */
 
+/*
 PID_info new_PID(float base_speed, float gain) {
     PID_info new = malloc(sizeof(PID_info));
     new->base_speed = malloc(sizeof(float));
@@ -30,3 +32,4 @@ void edit_PID(PID_info PID, float base_speed, float gain) {
     PID->base_speed = base_speed;
     PID->gain = gain;
 }
+*/

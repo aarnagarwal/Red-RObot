@@ -1,3 +1,4 @@
+/*
 const int numLine = 5;
 const int distVal = 13;
 #include <Servo.h>
@@ -94,3 +95,4 @@ void loop() {
     }
   }
 }
+*/
