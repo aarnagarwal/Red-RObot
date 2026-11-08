@@ -94,11 +94,11 @@ void AutonomousLoop() {
     float right_speed = current_speed - correction;
 
     // IMPORTANT: Check actual RedRobot motor speed limits
-    left_speed = std::clamp(left_speed, 0.0f, 255.0f);
-    right_speed = std::clamp(right_speed, 0.0f, 255.0f);
+    left_speed = std::clamp(left_speed, -100.0f, 100.0f);
+    right_speed = std::clamp(right_speed, -100.0f, 100.0f);
 
     /* STEP 5: Set servos */
-
+    //if using servos you'll not want to reset them to 0 every time
     RedRobot::SetServo(0, 0);
     RedRobot::SetServo(1, 0);
     RedRobot::SetServo(2, 0);
