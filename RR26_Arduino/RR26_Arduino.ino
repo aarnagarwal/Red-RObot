@@ -10,10 +10,16 @@
 
 
 
-struct{
+struct pid_struct {
     float previous_error;
     float correction;
-} PID_struct;
+};
+
+// Explicit declaration keeps Arduino prototype generation after the type.
+bool PID_calc(const uint16_t array_of_sensor_vals[6], pid_struct *state);
+void line_follow();
+void auton_button();
+void auton_score();
 
 // PID tuning parameters
 float Kp = 5.0f;
@@ -29,8 +35,10 @@ float current_speed = 30.0f;
 bool started; // boolean (true or false) to keep track of if we should start
 int counter;  // integer to hold a count value
 
-PID_struct PID_info = malloc(PID_struct);
-PID_info->previous_error = previous_error;
+pid_struct PID_info = {0.0f, 0.0f};
+int auton_state = 1; // 1 = button route, 2 = scoring route
+unsigned long initialTimems = 0;
+const unsigned long FOLLOW_DURATION_MS = 10000UL;
 
 // This function runs ONCE, when the microcontroller boots up
 void setup() {
@@ -46,7 +54,7 @@ void setup() {
   counter = 0;
 }
 
-void PID_calc(uint16_t array_of_sensor_vals, struct PID_struct *PID_info) {
+bool PID_calc(const uint16_t array_of_sensor_vals[6], pid_struct *state) {
     /* STEP 1: Calculate weighted average position */
 
     float weighted_sum = 0.0f;
@@ -58,7 +66,7 @@ void PID_calc(uint16_t array_of_sensor_vals, struct PID_struct *PID_info) {
         float darkness = 1000.0f - array_of_sensor_vals[i];
 
         // Keep darkness nonnegative
-        darkness = std::max(0.0f, darkness);
+        darkness = max(0.0f, darkness);
 
         // Sensor positions: -2.5 to +2.5 (ideally center is between 3 and 4 which corresponds to indexes 2 and 3)
         float position = i - 2.5f;
@@ -73,7 +81,9 @@ void PID_calc(uint16_t array_of_sensor_vals, struct PID_struct *PID_info) {
     if (total_darkness <= 0.0f) {
         RedRobot::WriteDCMotor(2, 0);
         RedRobot::WriteDCMotor(3, 0);
-        return;
+        state->previous_error = 0.0f;
+        state->correction = 0.0f;
+        return false;
     }
 
     float error = weighted_sum / total_darkness;
@@ -81,31 +91,32 @@ void PID_calc(uint16_t array_of_sensor_vals, struct PID_struct *PID_info) {
     /* STEP 3: Calculate PD correction */
 
     float P = Kp * error;
-    float D = Kd * (error - PID_info->previous_error);
+    float D = Kd * (error - state->previous_error);
 
     float correction = P + D;
 
     // IMPORTANT: Save error for next iteration
     previous_error = error;
 
-    PID_info->correction = correction;
-    PID_info->previous_error = previous_error;
+    state->correction = correction;
+    state->previous_error = previous_error;
+    return true;
 }
 
 void line_follow() {
     uint16_t sensor_values[6];
     RedRobot::ReadLineSensor(sensor_values);
 
-    PID_calc(&sensor_values, &PID_info);
+    if (!PID_calc(sensor_values, &PID_info)) return;
 
     /* STEP 4: Adjust motor speeds */
 
-    float left_speed = current_speed + PID_info->correction;
-    float right_speed = current_speed - PID_info->correction;
+    float left_speed = current_speed + PID_info.correction;
+    float right_speed = current_speed - PID_info.correction;
 
     // IMPORTANT: Check actual RedRobot motor speed limits
-    left_speed = std::clamp(left_speed, -100.0f, 100.0f);
-    right_speed = std::clamp(right_speed, -100.0f, 100.0f);
+    left_speed = constrain(left_speed, -100.0f, 100.0f);
+    right_speed = constrain(right_speed, -100.0f, 100.0f);
 
     /* STEP 5: Set servos */
     //if using servos you'll not want to reset them to 0 every time
@@ -125,7 +136,10 @@ void line_follow() {
 // Look at RedRobot.h to see the robot interface: what functions you can call and how.
 
 void AutonomousLoop() {
-    unsigned long initialTimems = 0;
+    if (!started) {
+        initialTimems = millis();
+        started = true;
+    }
     
     //auton_state is if we are in scoring or 
     if (auton_state == 1) {
@@ -152,43 +166,29 @@ dispense
 done (enter teleop)
 */
 
-// GOAL: BUTTON //
-//left and right are the same bc no components are moving
-/* PUT THE FOLLOWING IN THE LOOP BEFORE CALLING THIS FUNCTION
-unsigned long initialTimems = 0; 
-*/
+// One line-following update per call keeps autonomous mode responsive.
 void auton_button() {
-    //line follow
-    unsigned long currentTimems = millis(); //in ms
-
-    //change the first val to the amount of seconds, 100 makes in ms
-    while ((initialTimems - currentTimems) < (10*100)) {
-        lineFollow();
+    /*
+    if (millis() - initialTimems < FOLLOW_DURATION_MS) {
+        line_follow();
+    } else {
+        RedRobot::WriteDCMotor(2, 0);
+        RedRobot::WriteDCMotor(3, 0);
     }
-
-    //hit the wall
-    //stop moving forward after an amount of time but that will be determined after we can do some testing
+    */
+    line_follow();
 }
 
-// GOAL: SCORE //
-//left and right are the same bc no components are moving
-/* PUT THE FOLLOWING IN THE LOOP BEFORE CALLING THIS FUNCTION
-unsigned long initialTimems = 0; 
-*/
 void auton_score() {
-    //line follow
-    unsigned long currentTimems = millis(); //in ms
-
-    //change the first val to the amount of seconds, 100 makes in ms
-    //this one the amount of time does matter, how long until we're at the zone so lets spit it out
-    while ((initialTimems - currentTimems) < (10*100)) {
-        lineFollow();
+    /*
+    if (millis() - initialTimems < FOLLOW_DURATION_MS) {
+        line_follow();
+        return;
     }
-    //lined up? wait it will be lol
-
-    //dispense
-    //aka reverse direction of the intake wheel
-    //RedRobot::write to that yellow motor to go the negative (out) direction
-    RedRobot::WriteDCMotor(0, -100); //CHECK THIS IDK HOW TO DO THE YELLOW ONE
+    RedRobot::WriteDCMotor(2, 0);
+    RedRobot::WriteDCMotor(3, 0);
+    // Existing scoring behavior: run the intake in reverse.
+    RedRobot::WriteDCMotor(0, -100);
+    */
+    line_follow();
 }
-
